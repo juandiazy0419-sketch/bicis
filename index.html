@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Control bicicletas PPH</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:-apple-system,system-ui,Roboto,Arial,sans-serif;background:#f2f3f5;color:#111827}
+header{background:#111827;color:#fff;padding:10px 14px}
+.top{display:flex;justify-content:space-between;align-items:center;font-size:13px}
+.top a{color:#9ca3af;font-size:12px}
+.paso{font-size:10px;color:#9ca3af;letter-spacing:.05em;margin-top:2px}
+.wrap{padding:16px;max-width:560px;margin:0 auto}
+input{width:100%;padding:12px;border-radius:9px;border:1px solid #d1d5db;font-size:15px;background:#fff;color:#111;margin-bottom:8px}
+button{border:0;border-radius:11px;font-size:15px;font-weight:600;padding:16px;width:100%;color:#fff;cursor:pointer;margin-bottom:8px}
+.verde{background:#16a34a}.rojo{background:#dc2626}.negro{background:#111827}
+.gris{background:#e5e7eb;color:#111827;font-weight:500;font-size:13px;padding:13px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:14px}
+.conf{border:2px solid #3b82f6;border-radius:14px;padding:16px;text-align:center;background:#fff;margin-bottom:14px}
+.lbl{color:#6b7280;font-size:11px}
+.big{font-size:19px;font-weight:500;text-align:center;margin-bottom:6px}
+.chk{width:84px;height:84px;border-radius:50%;margin:6px auto 16px;color:#fff;font-size:44px;line-height:84px;text-align:center}
+.datos{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;font-size:13px;line-height:1.95}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;z-index:20}
+.sh{background:#fff;width:100%;border-radius:16px 16px 0 0;padding:16px;max-height:82vh;overflow:auto}
+.row{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #f0f0f0;font-size:13px}
+.msg{padding:10px;border-radius:9px;font-size:13px;margin-bottom:10px;background:#fef3c7}
+.fila{display:flex;gap:8px}
+#scan{position:fixed;inset:0;background:#000;z-index:50;display:none;flex-direction:column}
+#scan.abierto{display:flex}
+#camara{flex:1;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#0b0f14}
+#vid{width:100%;height:100%;object-fit:cover}
+#preview{width:100%;height:100%;object-fit:contain;display:none}
+#marco{position:absolute;width:230px;height:230px;border:3px solid #22c55e;border-radius:16px;box-shadow:0 0 0 9999px rgba(0,0,0,.35)}
+#pista{position:absolute;top:12px;left:10px;right:10px;text-align:center;color:#fff;font-size:13px;text-shadow:0 1px 4px #000}
+#aviso{display:none;padding:10px 14px;font-size:13px;text-align:center;color:#111827}
+#scanpie{background:#111827;padding:12px}
+#scanpie button:last-child{margin-bottom:0}
+#manual{display:none}
+</style>
+</head>
+<body>
+
+<div id="login" class="wrap">
+  <div class="card">
+    <div style="font-weight:700;font-size:17px;margin-bottom:2px">Portería · Bicicletas</div>
+    <div class="lbl" style="margin-bottom:12px">Ingresa tus datos de guardia</div>
+    <input id="gn" placeholder="Nombre del guardia">
+    <input id="gp" type="password" inputmode="numeric" placeholder="PIN">
+    <button class="verde" onclick="entrar()">Entrar</button>
+    <div id="lerr" class="msg" style="display:none"></div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <header>
+    <div class="top"><b id="quien"></b><a onclick="salir()">cambiar guardia</a></div>
+    <div class="paso" id="paso"></div>
+  </header>
+  <div class="wrap" id="cont"></div>
+</div>
+
+<div id="scan">
+  <div id="camara">
+    <video id="vid" playsinline muted autoplay></video>
+    <img id="preview">
+    <div id="marco"></div>
+    <div id="pista">Cargando cámara...</div>
+  </div>
+  <div id="aviso"></div>
+  <div id="scanpie">
+    <input id="manual" placeholder="Escribe el número de serie">
+    <button class="gris" onclick="tomarFoto()">Tomar foto del QR</button>
+    <button class="gris" onclick="toggleManual()">Escribir la serie a mano</button>
+    <button class="gris" onclick="cerrarEscaner()">Cancelar</button>
+  </div>
+</div>
+<input id="fotoInput" type="file" accept="image/*" capture="environment" style="display:none">
+<canvas id="lienzo" style="display:none"></canvas>
+<div id="ov"></div>
+
+<script>
+/* ====== CONFIGURACION ====== */
+var API_URL = 'PEGA_AQUI_TU_URL_EXEC';
+
+var guardia = localStorage.getItem('guardia') || '';
+var biciActual = null;
+var stream = null, raf = null, enEscaner = false, cargandoLector = false;
+
+var SERIE_INICIAL = '';
+try{
+  var mm = location.search.match(/[?&]serie=([^&]+)/);
+  if(mm) SERIE_INICIAL = decodeURIComponent(mm[1]);
+}catch(e){}
+
+/* ====== PUENTE CON LA HOJA ====== */
+function api(accion, params){
+  params = params || {};
+  return new Promise(function(res, rej){
+    if(window.google && google.script && google.script.run){
+      var r = google.script.run.withSuccessHandler(res).withFailureHandler(rej);
+      if(accion==='login') r.login(params.nombre, params.pin);
+      else if(accion==='buscar') r.buscar(params.q);
+      else if(accion==='ficha') r.ficha(params.serie);
+      else if(accion==='autorizados') r.autorizados(params.serie);
+      else if(accion==='agregarAutorizado') r.agregarAutorizado(params.serie, params.nombre, params.cedula, params.parentesco);
+      else if(accion==='registrar') r.registrar(params.serie, params.tipo, params.guardia, params.persona, params.obs||'');
+      else rej(new Error('Acción desconocida'));
+      return;
+    }
+    var cb = 'cb' + Math.floor(Math.random()*1e9);
+    var s = document.createElement('script');
+    var t = setTimeout(function(){ limpiar(); rej(new Error('La hoja no respondió')); }, 25000);
+    function limpiar(){
+      clearTimeout(t);
+      try{ delete window[cb]; }catch(e){ window[cb] = undefined; }
+      if(s.parentNode) s.parentNode.removeChild(s);
+    }
+    window[cb] = function(d){ limpiar(); res(d); };
+    var qs = 'api=1&accion=' + encodeURIComponent(accion) + '&callback=' + cb;
+    for(var k in params){ if(params.hasOwnProperty(k)) qs += '&' + k + '=' + encodeURIComponent(params[k]==null?'':params[k]); }
+    s.src = API_URL + '?' + qs;
+    s.onerror = function(){ limpiar(); rej(new Error('Sin conexión con la hoja')); };
+    document.head.appendChild(s);
+  });
+}
+
+/* ====== UTILES ====== */
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function cont(h){ document.getElementById('cont').innerHTML = h; }
+function paso(t){ document.getElementById('paso').textContent = t; }
+function aviso(txt, color){
+  var a = document.getElementById('aviso');
+  if(!txt){ a.style.display='none'; return; }
+  a.style.display='block'; a.style.background=color||'#fef3c7'; a.textContent=txt;
+}
+
+function entrar(){
+  var n = document.getElementById('gn').value.trim(), p = document.getElementById('gp').value.trim();
+  if(!n||!p) return;
+  api('login', {nombre:n, pin:p}).then(function(r){
+    if(r && r.ok){ guardia = r.guardia; localStorage.setItem('guardia', guardia); arrancar(); }
+    else { var e = document.getElementById('lerr'); e.style.display='block'; e.textContent = (r&&r.mensaje)||'Error'; }
+  }).catch(function(err){ var e=document.getElementById('lerr'); e.style.display='block'; e.textContent = err.message; });
+}
+function salir(){ localStorage.removeItem('guardia'); location.reload(); }
+
+function arrancar(){
+  document.getElementById('login').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('quien').textContent = guardia;
+  if(SERIE_INICIAL) abrir(SERIE_INICIAL); else buscar();
+}
+
+/* ====== LECTOR ====== */
+function cargarLector(cb){
+  if(window.jsQR){ cb(true); return; }
+  if(cargandoLector){ setTimeout(function(){ cargarLector(cb); }, 250); return; }
+  cargandoLector = true;
+  var urls = ['https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js',
+              'https://unpkg.com/jsqr@1.4.0/dist/jsQR.js',
+              'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js'];
+  var i = 0;
+  (function sig(){
+    if(i >= urls.length){ cargandoLector=false; cb(false); return; }
+    var s = document.createElement('script');
+    s.src = urls[i++];
+    s.onload = function(){ cargandoLector=false; window.jsQR ? cb(true) : sig(); };
+    s.onerror = sig;
+    document.head.appendChild(s);
+  })();
+}
+
+function abrirEscaner(){
+  paso('Escanear QR');
+  enEscaner = true;
+  document.getElementById('scan').classList.add('abierto');
+  document.getElementById('preview').style.display = 'none';
+  document.getElementById('vid').style.display = 'block';
+  document.getElementById('marco').style.display = 'block';
+  document.getElementById('manual').style.display = 'none';
+  document.getElementById('pista').textContent = 'Cargando cámara...';
+  aviso('');
+  cargarLector(function(){ prenderCamara(); });
+}
+
+function prenderCamara(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ sinCamara('Este navegador no da cámara.'); return; }
+  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false})
+    .then(function(s){
+      if(!enEscaner){ s.getTracks().forEach(function(t){t.stop();}); return; }
+      stream = s;
+      var v = document.getElementById('vid');
+      v.srcObject = s; v.play();
+      document.getElementById('pista').textContent = 'Apunta al código QR de la bicicleta';
+      bucle();
+    })
+    .catch(function(err){ sinCamara('Permiso de cámara: ' + (err && err.name ? err.name : 'error')); });
+}
+
+function sinCamara(msg){
+  document.getElementById('vid').style.display = 'none';
+  document.getElementById('marco').style.display = 'none';
+  document.getElementById('pista').textContent = 'Usa "Tomar foto del QR"';
+  aviso(msg + ' — usa "Tomar foto del QR".', '#dbeafe');
+}
+
+function bucle(){
+  var v = document.getElementById('vid'), c = document.getElementById('lienzo');
+  if(!enEscaner) return;
+  if(v.readyState === v.HAVE_ENOUGH_DATA && v.videoWidth){
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    var x = c.getContext('2d');
+    x.drawImage(v, 0, 0, c.width, c.height);
+    var d = x.getImageData(0, 0, c.width, c.height);
+    var r = window.jsQR ? window.jsQR(d.data, d.width, d.height, {inversionAttempts:'dontInvert'}) : null;
+    if(r && r.data){ listoLectura(r.data); return; }
+  }
+  raf = requestAnimationFrame(bucle);
+}
+
+function tomarFoto(){ document.getElementById('fotoInput').click(); }
+
+document.getElementById('fotoInput').addEventListener('change', function(e){
+  var f = e.target.files[0]; e.target.value = '';
+  if(!f) return;
+  aviso('Leyendo el código...', '#fef3c7');
+  var url = URL.createObjectURL(f);
+  var img = new Image();
+  img.onload = function(){
+    document.getElementById('vid').style.display='none';
+    document.getElementById('marco').style.display='none';
+    var p = document.getElementById('preview'); p.src=url; p.style.display='block';
+    document.getElementById('pista').textContent = 'Leyendo...';
+    decodificar(img).then(function(txt){
+      if(txt) listoLectura(txt);
+      else aviso('No pude leer el código. Acércalo más y vuelve a intentar.', '#fee2e2');
+    }).catch(function(){ aviso('Error leyendo la foto.', '#fee2e2'); });
+  };
+  img.onerror = function(){ aviso('No pude abrir la foto.', '#fee2e2'); };
+  img.src = url;
+});
+
+async function decodificar(img){
+  try{
+    if('BarcodeDetector' in window){
+      var sop = await BarcodeDetector.getSupportedFormats();
+      if(sop.indexOf('qr_code') > -1){
+        var bd = new BarcodeDetector({formats:['qr_code']});
+        var r = await bd.detect(img);
+        if(r && r.length && r[0].rawValue) return r[0].rawValue;
+      }
+    }
+  }catch(e){}
+  if(!window.jsQR) return null;
+  var lados = [1600, 1200, 800, 520];
+  for(var i=0;i<lados.length;i++){
+    var c = document.getElementById('lienzo');
+    var k = Math.min(1, lados[i] / Math.max(img.width, img.height));
+    c.width = Math.max(50, Math.round(img.width*k));
+    c.height = Math.max(50, Math.round(img.height*k));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    var r1 = buscarEnCanvas(c); if(r1) return r1;
+    var recs = [0.75, 0.5, 0.33];
+    for(var j=0;j<recs.length;j++){
+      var w = Math.round(c.width*recs[j]), h = Math.round(c.height*recs[j]);
+      var c2 = document.createElement('canvas'); c2.width=w; c2.height=h;
+      c2.getContext('2d').drawImage(c, Math.round((c.width-w)/2), Math.round((c.height-h)/2), w, h, 0, 0, w, h);
+      var r2 = buscarEnCanvas(c2); if(r2) return r2;
+    }
+  }
+  return null;
+}
+function buscarEnCanvas(c){
+  var d = c.getContext('2d').getImageData(0,0,c.width,c.height);
+  var r = window.jsQR(d.data, d.width, d.height, {inversionAttempts:'attemptBoth'});
+  return (r && r.data) ? r.data : null;
+}
+
+function listoLectura(texto){
+  if(navigator.vibrate) navigator.vibrate(90);
+  var m = String(texto).match(/[?&]serie=([^&]+)/);
+  var serie = m ? decodeURIComponent(m[1]) : String(texto).trim();
+  cerrarEscaner();
+  abrir(serie);
+}
+
+function toggleManual(){
+  var m = document.getElementById('manual');
+  m.style.display = (m.style.display==='block') ? 'none' : 'block';
+  if(m.style.display==='block') m.focus();
+}
+function irManual(){
+  var v = document.getElementById('manual').value.trim();
+  if(v){ cerrarEscaner(); abrir(v); }
+}
+function cerrarEscaner(){
+  enEscaner = false;
+  document.getElementById('scan').classList.remove('abierto');
+  if(raf) cancelAnimationFrame(raf);
+  if(stream){ stream.getTracks().forEach(function(t){t.stop();}); stream = null; }
+}
+
+/* ====== BUSCAR ====== */
+function buscar(){
+  paso('Buscar bicicleta');
+  var q = document.getElementById('q');
+  var valor = q ? q.value.trim() : '';
+  cont('<button class="negro" style="padding:20px;font-size:16px" onclick="abrirEscaner()">ESCANEAR CÓDIGO QR</button>'
+     + '<div class="lbl" style="text-align:center;margin:12px 0">o busca manualmente</div>'
+     + '<input id="q" placeholder="Cédula, serie, nombre o apto" value="'+esc(valor)+'">'
+     + '<button class="verde" onclick="buscar()">Buscar</button>'
+     + '<div id="res"></div>');
+  var inp = document.getElementById('q');
+  inp.addEventListener('keydown', function(e){ if(e.key==='Enter') buscar(); });
+  if(!valor) return;
+  api('buscar', {q:valor}).then(function(lista){
+    lista = lista || [];
+    var h = '<div class="lbl" style="margin:10px 0 8px">'+lista.length+' resultado(s)</div>';
+    if(!lista.length) h += '<div class="lbl">Sin resultados</div>';
+    lista.forEach(function(b){
+      h += '<div class="card" style="cursor:pointer" onclick="abrir(\''+b.serie.replace(/'/g,"\\'")+'\')">'
+        + '<div style="display:flex;justify-content:space-between;gap:10px">'
+        + '<div><div style="font-weight:600">'+esc(b.nombre)+'</div>'
+        + '<div class="lbl">'+esc(b.marca)+' · '+esc(b.color)+' · apto '+esc(b.apto)+'</div></div>'
+        + '<span class="lbl" style="font-weight:600;color:'+(b.estado==='ADENTRO'?'#15803d':'#b91c1c')+'">'+b.estado+'</span>'
+        + '</div></div>';
+    });
+    document.getElementById('res').innerHTML = h;
+  }).catch(function(err){
+    document.getElementById('res').innerHTML = '<div class="card">'+esc(err.message)+'</div>';
+  });
+}
+
+/* ====== PASO 1 ====== */
+function abrir(serie){
+  paso('Verificando...');
+  api('ficha', {serie:serie}).then(function(b){
+    if(!b){ cont('<div class="card">No se encontró la bicicleta con serie '+esc(serie)+'</div>'
+                 + '<button class="gris" onclick="buscar()">Volver</button>'); return; }
+    biciActual = b;
+    verificar();
+  }).catch(function(err){ cont('<div class="card">'+esc(err.message)+'</div>'); });
+}
+
+function verificar(){
+  var b = biciActual, ad = b.estado === 'ADENTRO';
+  paso('Paso 1 de 2 · Verificar');
+  cont(
+   '<div class="lbl" style="text-align:center;margin-bottom:10px">Código del marco</div>'
+  + '<div class="conf">'
+  + '<div class="lbl">¿ES ESTA LA BICICLETA?</div>'
+  + '<div style="font-weight:600;font-size:18px;margin-top:4px">'+esc(b.nombre)+'</div>'
+  + '<div class="lbl" style="margin-bottom:12px">Apto '+esc(b.apto)+'</div>'
+  + (b.foto ? '<img src="'+esc(b.foto)+'" style="width:100%;max-height:150px;object-fit:cover;border-radius:9px;margin-bottom:12px">' : '')
+  + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;text-align:left;font-size:13px;border-top:1px solid #f0f0f0;padding-top:12px">'
+  + '<div><span class="lbl">Marca</span><br><b>'+esc(b.marca)+'</b></div>'
+  + '<div><span class="lbl">Color</span><br><b>'+esc(b.color)+'</b></div>'
+  + '<div><span class="lbl">Tipo</span><br>'+esc(b.tipo)+'</div>'
+  + '<div><span class="lbl">Estado</span><br><b style="color:'+(ad?'#15803d':'#b91c1c')+'">'+b.estado+'</b></div>'
+  + '</div>'
+  + '<div class="lbl" style="margin-top:10px;word-break:break-all">Serie '+esc(b.serie)+'</div>'
+  + '</div>'
+  + '<button class="verde" onclick="accion()">SÍ, ES ESTA BICICLETA</button>'
+  + '<button class="gris" onclick="buscar()">No coincide · buscar por cédula</button>'
+  + '<button class="gris" onclick="abrirEscaner()">Escanear otro QR</button>'
+  + '<button class="gris" onclick="verAut()">Personas autorizadas ('+b.autorizados.length+')</button>'
+  );
+}
+
+/* ====== PASO 2 ====== */
+function accion(){
+  var b = biciActual, ad = b.estado === 'ADENTRO';
+  paso('Paso 2 de 2 · Registrar');
+  cont(
+   '<div class="card">'
+  + '<div style="font-weight:600">'+esc(b.nombre)+'</div>'
+  + '<div class="lbl">Apto '+esc(b.apto)+' · '+esc(b.marca)+' '+esc(b.color)+'</div>'
+  + '<div style="margin-top:8px;font-size:13px">Ahora está <b style="color:'+(ad?'#15803d':'#b91c1c')+'">'+b.estado+'</b> del conjunto</div>'
+  + '</div>'
+  + '<input id="quienm" placeholder="¿Quién la mueve? (opcional)">'
+  + '<div class="lbl" style="text-align:center;margin:6px 0 8px">¿Qué está pasando?</div>'
+  + '<button class="verde" style="padding:24px;font-size:17px" onclick="marcar(\'ENTRADA\')">ENTRADA</button>'
+  + '<div class="lbl" style="text-align:center;margin-bottom:10px">la bicicleta entra al conjunto</div>'
+  + '<button class="rojo" style="padding:24px;font-size:17px" onclick="marcar(\'SALIDA\')">SALIDA</button>'
+  + '<div class="lbl" style="text-align:center;margin-bottom:10px">la bicicleta sale del conjunto</div>'
+  + '<button class="gris" onclick="verificar()">Volver a verificar</button>'
+  );
+}
+
+function marcar(tipo){
+  var inp = document.getElementById('quienm');
+  var persona = inp ? inp.value.trim() : '';
+  var b = biciActual;
+  paso('Registrando...');
+  api('registrar', {serie:b.serie, tipo:tipo, guardia:guardia, persona:persona, obs:''}).then(function(r){
+    if(!r || !r.ok){
+      cont('<div class="card">'+esc((r&&r.mensaje)||'Error')+'</div>'
+          + '<button class="gris" onclick="abrir(\''+b.serie.replace(/'/g,"\\'")+'\')">Volver</button>');
+      return;
+    }
+    listo(tipo, r.hora || '');
+  }).catch(function(err){ cont('<div class="card">'+esc(err.message)+'</div>'); });
+}
+
+/* ====== PASO 3 ====== */
+function listo(tipo, hora){
+  var b = biciActual, ent = tipo === 'ENTRADA';
+  paso('Registrado');
+  cont(
+   '<div class="chk" style="background:'+(ent?'#16a34a':'#dc2626')+'">&#10003;</div>'
+  + '<div class="big">'+(ent?'Gracias por validar':'Felicidades')+'</div>'
+  + '<div style="text-align:center;font-size:14px;margin-bottom:16px">Has registrado la <b>'+tipo+'</b><br>de la bicicleta</div>'
+  + '<div class="datos">'
+  + '<div><span class="lbl">Bicicleta:</span> <b>'+esc(b.marca)+' '+esc(b.color)+'</b></div>'
+  + '<div><span class="lbl">Propietario:</span> '+esc(b.nombre)+'</div>'
+  + '<div><span class="lbl">Apartamento:</span> '+esc(b.apto)+'</div>'
+  + '<div><span class="lbl">Hora:</span> '+esc(hora)+'</div>'
+  + '<div><span class="lbl">Registrado por:</span> '+esc(guardia)+'</div>'
+  + '<div style="margin-top:6px;border-top:1px solid #f0f0f0;padding-top:6px">La bicicleta queda <b style="color:'+(ent?'#15803d':'#b91c1c')+'">'+(ent?'ADENTRO':'AFUERA')+'</b></div>'
+  + '</div>'
+  + '<button class="negro" style="margin-top:14px;padding:20px;font-size:16px" onclick="abrirEscaner()">ESCANEAR OTRA BICICLETA</button>'
+  + '<button class="gris" onclick="buscar()">Ir al buscador</button>'
+  );
+}
+
+/* ====== AUTORIZADOS ====== */
+function verAut(){
+  var b = biciActual;
+  api('autorizados', {serie:b.serie}).then(function(lista){
+    lista = lista || [];
+    var filas = lista.length ? lista.map(function(a){
+      return '<div class="row"><span>'+esc(a.nombre)+'</span><span class="lbl">'+esc(a.parentesco||'')+' · '+esc(a.cedula||'')+'</span></div>';
+    }).join('') : '<div class="lbl">Sin autorizados registrados</div>';
+    document.getElementById('ov').innerHTML = '<div class="ov" onclick="if(event.target===this)cerrar()">'
+      + '<div class="sh"><div style="font-weight:700;font-size:16px">Personas autorizadas</div>'
+      + '<div class="lbl" style="margin-bottom:10px">'+esc(b.nombre)+' · serie '+esc(b.serie)+'</div>'+filas
+      + '<div style="margin-top:14px" class="fila">'
+      + '<input id="an" placeholder="Nombre" style="flex:1.4">'
+      + '<input id="ac" placeholder="Cédula" style="flex:1">'
+      + '</div><div class="fila">'
+      + '<input id="ap" placeholder="Parentesco" style="flex:1">'
+      + '<button class="verde" style="width:auto;padding:12px 16px;margin:0" onclick="addAut()">Agregar</button>'
+      + '</div>'
+      + '<button class="gris" style="margin-top:10px" onclick="cerrar()">Cerrar</button>'
+      + '</div></div>';
+  });
+}
+function addAut(){
+  var n = document.getElementById('an').value.trim(), c = document.getElementById('ac').value.trim(), p = document.getElementById('ap').value.trim();
+  if(!n) return;
+  api('agregarAutorizado', {serie:biciActual.serie, nombre:n, cedula:c, parentesco:p}).then(function(){ verAut(); });
+}
+function cerrar(){ document.getElementById('ov').innerHTML = ''; }
+
+document.getElementById('manual').addEventListener('keydown', function(e){ if(e.key==='Enter') irManual(); });
+if(guardia) arrancar();
+</script>
+</body>
+</html>
