@@ -7,19 +7,20 @@
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;font-family:-apple-system,system-ui,Roboto,Arial,sans-serif;background:#f2f3f5;color:#111827}
-
+body::before{content:'';position:fixed;inset:0;background:url('https://juandiazy0419-sketch.github.io/bicis/logo.jpg') no-repeat center 55%;background-size:68%;opacity:.13;pointer-events:none;z-index:0}
 header,.wrap,#ov{position:relative;z-index:2}
 header{background:#111827;color:#fff;padding:10px 14px}
 .top{display:flex;justify-content:space-between;align-items:center;font-size:13px}
 .top a{color:#9ca3af;font-size:12px}
 .paso{font-size:10px;color:#9ca3af;letter-spacing:.05em;margin-top:2px}
 .wrap{padding:16px;max-width:560px;margin:0 auto}
-input,select{width:100%;padding:12px;border-radius:9px;border:1px solid #d1d5db;font-size:15px;background:#fff;color:#111;margin-bottom:8px}
+input,select{width:100%;padding:12px;border-radius:9px;border:1px solid #d1d5db;font-size:15px;background:#fff;color:#111;margin-bottom:8px;outline:none}
+input:focus,select:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15)}
 button{border:0;border-radius:11px;font-size:15px;font-weight:600;padding:16px;width:100%;color:#fff;cursor:pointer;margin-bottom:8px}
 .verde{background:#16a34a}.rojo{background:#dc2626}.negro{background:#111827}
 .gris{background:#e5e7eb;color:#111827;font-weight:500;font-size:13px;padding:13px}
 .card{background:rgba(255,255,255,.94);border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-bottom:14px}
-.conf{border:2px solid #3b82f6;border-radius:14px;padding:16px;text-align:center;background:rgba(255,255,255,.95);margin-bottom:14px}
+.conf{border:2px solid #3b82f6;border-radius:14px;padding:16px;text-align:center;background:rgba(255,255,255,.96);margin-bottom:14px}
 .lbl{color:#6b7280;font-size:11px}
 .big{font-size:19px;font-weight:500;text-align:center;margin-bottom:6px}
 .chk{width:84px;height:84px;border-radius:50%;margin:6px auto 16px;color:#fff;font-size:44px;line-height:84px;text-align:center}
@@ -29,7 +30,20 @@ button{border:0;border-radius:11px;font-size:15px;font-weight:600;padding:16px;w
 .row{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #f0f0f0;font-size:13px}
 .msg{padding:10px;border-radius:9px;font-size:13px;margin-bottom:10px;background:#fef3c7}
 .fila{display:flex;gap:8px}
-.logo{display:block;width:135px;margin:6px auto 14px}
+
+/* ===== FORMULARIO ===== */
+.encabezado{text-align:center;margin-bottom:16px}
+.encabezado .t1{font-size:18px;font-weight:600}
+.encabezado .t2{font-size:12px;color:#6b7280;margin-top:2px}
+.fcard{background:rgba(255,255,255,.96);border:1px solid #e5e7eb;border-radius:14px;padding:16px 14px 6px;margin-bottom:14px}
+.fsec{font-size:11px;font-weight:700;color:#6b7280;letter-spacing:.09em;text-transform:uppercase;text-align:center;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #eef0f3}
+.campo{display:block;margin-bottom:14px}
+.campo > span{display:block;font-size:11px;font-weight:600;color:#4b5563;letter-spacing:.03em;margin-bottom:6px}
+.campo input,.campo select{margin-bottom:0}
+.campo input[readonly]{background:#eef0f3;color:#4b5563}
+.pie{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.pie .campo{margin-bottom:0}
+
 #scan{position:fixed;inset:0;background:#000;z-index:50;display:none;flex-direction:column}
 #scan.abierto{display:flex}
 #camara{flex:1;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#0b0f14}
@@ -46,7 +60,6 @@ button{border:0;border-radius:11px;font-size:15px;font-weight:600;padding:16px;w
 <body>
 
 <div id="login" class="wrap">
-
   <div class="card">
     <div style="font-weight:700;font-size:17px;margin-bottom:2px">Portería · Bicicletas</div>
     <div class="lbl" style="margin-bottom:12px">Ingresa tus datos de guardia</div>
@@ -338,18 +351,43 @@ function nuevoRegistro(){
   paso('Nuevo registro');
   var hoy = new Date().toLocaleDateString('es-CO');
   cont(
-   '<div class="lbl" style="margin-bottom:10px">Datos de la bicicleta y del propietario</div>'
+   '<div class="encabezado">'
+  + '<div class="t1">Nueva bicicleta</div>'
+  + '<div class="t2">Llena los datos y se genera el QR al instante</div>'
+  + '</div>'
   + '<div id="fmsg" class="msg" style="display:none"></div>'
-  + '<input id="f_fecha" value="'+esc(hoy)+'" readonly style="background:#eef0f3">'
-  + '<input id="f_nombre" placeholder="Nombre y apellido del propietario">'
-  + '<input id="f_apto" placeholder="Apto y torre (ej: 2705 Sur)">'
-  + '<input id="f_cedula" placeholder="Número de cédula" inputmode="numeric">'
-  + '<input id="f_tipo" placeholder="Tipo de bicicleta" list="tipos">'
-  + '<datalist id="tipos"><option>Todoterreno</option><option>Montaña</option><option>Ruta</option><option>MTB</option><option>Gravel</option><option>Bicicleta urbana</option><option>Bicicleta asistida con motor</option></datalist>'
-  + '<input id="f_marca" placeholder="Marca de bicicleta">'
-  + '<input id="f_color" placeholder="Color">'
-  + '<input id="f_serie" placeholder="Número de serie (está en el marco)">'
-  + '<select id="f_estado"><option value="FUERA">Estado: AFUERA del conjunto</option><option value="ADENTRO">Estado: ADENTRO del conjunto</option></select>'
+
+  + '<div class="fcard">'
+  + '<div class="fsec">Propietario</div>'
+  + '<label class="campo"><span>Nombre y apellido</span>'
+  + '<input id="f_nombre" placeholder="Ej: Juan Pérez Gómez" autocomplete="off"></label>'
+  + '<label class="campo"><span>Número de cédula</span>'
+  + '<input id="f_cedula" placeholder="Ej: 1023456789" inputmode="numeric" autocomplete="off"></label>'
+  + '<label class="campo"><span>Apartamento y torre</span>'
+  + '<input id="f_apto" placeholder="Ej: 2705 Sur" autocomplete="off"></label>'
+  + '</div>'
+
+  + '<div class="fcard">'
+  + '<div class="fsec">Bicicleta</div>'
+  + '<label class="campo"><span>Tipo de bicicleta</span>'
+  + '<input id="f_tipo" placeholder="Ej: Todoterreno" list="tipos" autocomplete="off">'
+  + '<datalist id="tipos"><option>Todoterreno</option><option>Montaña</option><option>Ruta</option><option>MTB</option><option>Gravel</option><option>Bicicleta urbana</option><option>Bicicleta asistida con motor</option></datalist></label>'
+  + '<label class="campo"><span>Marca</span>'
+  + '<input id="f_marca" placeholder="Ej: GW, Trek, Specialized" autocomplete="off"></label>'
+  + '<label class="campo"><span>Color</span>'
+  + '<input id="f_color" placeholder="Ej: Negro con verde" autocomplete="off"></label>'
+  + '<label class="campo"><span>Número de serie</span>'
+  + '<input id="f_serie" placeholder="Está grabado en el marco" autocomplete="off"></label>'
+  + '</div>'
+
+  + '<div class="fcard">'
+  + '<div class="fsec">Registro</div>'
+  + '<div class="pie">'
+  + '<label class="campo"><span>Fecha</span><input id="f_fecha" value="'+esc(hoy)+'" readonly></label>'
+  + '<label class="campo"><span>Estado</span><select id="f_estado"><option value="FUERA">Afuera</option><option value="ADENTRO">Adentro</option></select></label>'
+  + '</div>'
+  + '</div>'
+
   + '<button class="verde" onclick="guardarRegistro()">GUARDAR Y GENERAR QR</button>'
   + '<button class="gris" onclick="buscar()">Cancelar</button>'
   );
